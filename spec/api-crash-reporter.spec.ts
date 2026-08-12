@@ -337,7 +337,7 @@ ifdescribe(!process.mas && !process.env.DISABLE_CRASH_REPORTER_TESTS)('crashRepo
       });
     });
 
-    describe('OOM crash keys', () => {
+    ifdescribe(!process.env.IS_COVERAGE)('OOM crash keys', () => {
       it(
         'reports OOM stack trace and heap statistics when renderer runs out of memory',
         { timeout: 120000 },
