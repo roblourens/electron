@@ -1306,6 +1306,18 @@ describe('chrome extensions', () => {
       expect((await extension.launch(false)).marker).toBe('second');
     });
 
+    it('emits runtime.onInstalled for a first load and a new version only', async () => {
+      const extension = await setUpRestartingExtension();
+
+      await extension.write('1.0', 'first');
+      expect((await extension.launch(true)).installed).toEqual({ reason: 'install' });
+
+      expect((await extension.launch(false)).installed).toBeNull();
+
+      await extension.write('2.0', 'second');
+      expect((await extension.launch(true)).installed).toEqual({ reason: 'update', previousVersion: '1.0' });
+    });
+
     it('keeps the background service worker when storage data is cleared', async () => {
       const customSession = session.fromPartition(`persist:${randomUUID()}`);
       const w = new BrowserWindow({ show: false, webPreferences: { session: customSession, nodeIntegration: true } });
