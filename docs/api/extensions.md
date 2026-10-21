@@ -52,7 +52,7 @@ provisional and may be removed.
 - `short_name`
 - `host_permissions` (Manifest V3)
 - `manifest_version`
-- `background` (Manifest V2)
+- `background`
 - `minimum_chrome_version`
 
 See [Manifest file format](https://developer.chrome.com/docs/extensions/mv3/manifest/) for more information about the purpose of each possible key.
@@ -103,6 +103,10 @@ The following events of `chrome.management` are supported:
 - `chrome.management.onEnabled`
 - `chrome.management.onDisabled`
 
+Apart from `chrome.management.getSelf` and
+`chrome.management.getPermissionWarningsByManifest`, these require the
+`management` permission.
+
 See [official documentation](https://developer.chrome.com/docs/extensions/reference/management) for more information.
 
 ### `chrome.runtime`
@@ -130,6 +134,11 @@ The following events of `chrome.runtime` are supported:
 - `chrome.runtime.onSuspendCanceled`
 - `chrome.runtime.onConnect`
 - `chrome.runtime.onMessage`
+
+> [!NOTE]
+> `chrome.runtime.onInstalled` is emitted with the reason `install` the first
+> time a session loads an extension and `update` when a later load has a
+> different version. Loading the same version again does not emit it.
 
 See [official documentation](https://developer.chrome.com/docs/extensions/reference/runtime) for more information.
 
