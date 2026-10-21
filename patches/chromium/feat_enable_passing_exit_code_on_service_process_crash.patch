@@ -10,6 +10,33 @@ exit codes in some crashing scenarios. To mitigate this, we can rely on
 ServiceProcessHost::Observer functions, but we need to pass the exit code to
 the observer.
 
+Out-of-memory terminations must also notify these observers. Otherwise the
+utility process host's destructor reports a normal termination with exit code
+zero, and no BrowserChildProcessCrashed notification is sent. This part can be
+removed when Chromium propagates TERMINATION_STATUS_OOM to both observers.
+
+diff --git a/content/browser/browser_child_process_host_impl.cc b/content/browser/browser_child_process_host_impl.cc
+--- a/content/browser/browser_child_process_host_impl.cc
++++ b/content/browser/browser_child_process_host_impl.cc
+@@ -465,6 +465,7 @@ void BrowserChildProcessHostImpl::OnChildDisconnected() {
+ #else  // BUILDFLAG(IS_ANDROID)
+     switch (info.status) {
+       case base::TERMINATION_STATUS_PROCESS_CRASHED:
++      case base::TERMINATION_STATUS_OOM:
+       case base::TERMINATION_STATUS_ABNORMAL_TERMINATION: {
+         exited_abnormally_ = true;
+         delegate_->OnProcessCrashed(info.exit_code);
+@@ -502,10 +503,6 @@ void BrowserChildProcessHostImpl::OnChildDisconnected() {
+         // TODO(wfh): This should not be hit but is sometimes. Investigate.
+         break;
+       }
+-      case base::TERMINATION_STATUS_OOM: {
+-        // TODO(wfh): Decide to what to do with OOMs here.
+-        break;
+-      }
+ #if BUILDFLAG(IS_WIN)
+       case base::TERMINATION_STATUS_INTEGRITY_FAILURE: {
+         // TODO(wfh): Decide to what to do with CIG failures here.
 diff --git a/content/browser/service_host/service_process_tracker.cc b/content/browser/service_host/service_process_tracker.cc
 index c7b620b9dd25c7842470c4827bd55c81c5816e05..a5f72f8bd55e7a2a43e792f91878de52f09fb988 100644
 --- a/content/browser/service_host/service_process_tracker.cc

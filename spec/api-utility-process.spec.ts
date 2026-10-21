@@ -244,6 +244,77 @@ describe('utilityProcess module', () => {
       expect(['crashed', 'abnormal-exit']).toContain(details.reason);
     });
 
+    ifit(process.platform === 'win32')(
+      'preserves the exit code and reason when a utility process runs out of memory',
+      { timeout: 30_000 },
+      async () => {
+        const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'electron-spec-utility-oom-exit-'));
+        const remoteApp = await startRemoteControlApp([`--user-data-dir=${directory}`]);
+        try {
+          const result = await remoteApp.remotely(
+            async (fixture: string, crashDirectory: string) => {
+              const { app, crashReporter, utilityProcess } = require('electron');
+              const { once } = require('node:events');
+              const { mkdirSync } = require('node:fs');
+              const { setImmediate } = require('node:timers/promises');
+              mkdirSync(crashDirectory, { recursive: true });
+              app.setPath('crashDumps', crashDirectory);
+              crashReporter.start({ uploadToServer: false });
+
+              const name = 'utility-oom-exit-code';
+              const gone: Array<{ type: string; reason: string; exitCode: number }> = [];
+              const onGone = (_event: Electron.Event, details: Electron.Details) => {
+                if (details.name === name) {
+                  gone.push({ type: details.type, reason: details.reason, exitCode: details.exitCode >>> 0 });
+                }
+              };
+              app.on('child-process-gone', onGone);
+              const child = utilityProcess.fork(fixture, [], {
+                serviceName: name,
+                stdio: 'ignore',
+                execArgv: ['--js-flags=--max-old-space-size=32']
+              });
+              let exitCount = 0;
+              child.on('exit', () => {
+                exitCount++;
+              });
+              const exited = once(child, 'exit');
+              try {
+                const [heapLimit] = await once(child, 'message');
+                if (!Number.isSafeInteger(heapLimit) || heapLimit <= 0 || heapLimit > 128 * 1024 * 1024) {
+                  throw new Error(`Utility OOM fixture heap limit was not applied: ${heapLimit}`);
+                }
+                child.postMessage('oom');
+                const [code] = await exited;
+                await setImmediate();
+                return { code, exitCount, gone };
+              } finally {
+                app.off('child-process-gone', onGone);
+                if (child.pid) {
+                  child.kill();
+                  await exited;
+                }
+              }
+            },
+            path.join(fixturesPath, 'oom.js'),
+            path.join(directory, 'Crashpad')
+          );
+          expect(result).toEqual({
+            code: 0xe0000008,
+            exitCount: 1,
+            gone: [{ type: 'Utility', reason: 'oom', exitCode: 0xe0000008 }]
+          });
+        } finally {
+          if (remoteApp.process.exitCode === null && remoteApp.process.signalCode === null) {
+            const exited = once(remoteApp.process, 'exit');
+            remoteApp.process.kill('SIGINT');
+            await exited;
+          }
+          await fs.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+        }
+      }
+    );
+
     ifit(!isWindows32Bit)('does not keep stale observers for crashed processes without JS references', async () => {
       const v8Util = (process as any)._linkedBinding('electron_common_v8_util');
       const logExpectedCrash = (phase: string) => {
